@@ -67,8 +67,6 @@ extern void Boot_Update_Firmware(struct work_struct *work);
 static int nvt_drm_notifier_callback(struct notifier_block *self, unsigned long event, void *data);
 #endif
 
-#define PROC_SYMLINK_PATH "touchpanel"
-
 #if TOUCH_KEY_NUM > 0
 const uint16_t touch_key_array[TOUCH_KEY_NUM] = {
 	KEY_BACK,
@@ -1540,34 +1538,84 @@ static DEVICE_ATTR(wake_gesture, S_IWUSR | S_IRUSR,
 static struct attribute *nvt_attr_group[] = {
 	&dev_attr_wake_gesture.attr,
     NULL
-};   
+};
 
+static struct nvt_ts_data *ts_g = NULL;
+static struct proc_dir_entry *prEntry_tp = NULL;
 
-static ssize_t novatek_input_symlink(struct nvt_ts_data *ts) {
-	char *driver_path;
+#define PAGESIZE 512
+
+#define BIT7 (0x1 << 7)
+
+int DouTap_gesture = 0; //"double tap"
+
+static ssize_t tp_gesture_read_func(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
+{
 	int ret = 0;
-	if (ts->input_proc) {
-		proc_remove(ts->input_proc);
-		ts->input_proc = NULL;
-	}
-	driver_path = kzalloc(PATH_MAX, GFP_KERNEL);
-	if (!driver_path) {
-		pr_err("%s: failed to allocate memory\n", __func__);
-		return -ENOMEM;
-	}
-
-	sprintf(driver_path, "/sys%s",
-			kobject_get_path(&ts->client->dev.kobj, GFP_KERNEL));
-
-	pr_err("%s: driver_path=%s\n", __func__, driver_path);
-
-	ts->input_proc = proc_symlink(PROC_SYMLINK_PATH, NULL, driver_path);
-
-	if (!ts->input_proc) {
-		ret = -ENOMEM;
-	}
-	kfree(driver_path);
+	char page[PAGESIZE];
+	struct nvt_ts_data *ts = ts_g;
+	if(!ts)
+		return ret;
+	NVT_LOG("gesture enable is: %d\n", ts->gesture_enable);
+	ret = sprintf(page, "%d\n", ts->gesture_enable);
+	ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
 	return ret;
+}
+
+static ssize_t tp_gesture_write_func(struct file *file, const char __user *buffer, size_t count, loff_t *ppos)
+{
+	char buf[10];
+	struct nvt_ts_data *ts = ts_g;
+	int write_value;
+	if(!ts)
+		return count;
+	if( count > 2 || ts->is_suspended)
+		return count;
+	if( copy_from_user(buf, buffer, count) ){
+		NVT_ERR("%s: read proc input error.\n", __func__);
+		return count;
+	}
+	NVT_LOG("%s write [0x%x]\n",__func__,buf[0]);
+
+    DouTap_gesture = (buf[0] & BIT7)?1:0; //double tap
+
+	if(DouTap_gesture)
+	{
+		ts->gesture_enable = 1;
+		write_value = 1;
+	}
+	else
+    {
+        ts->gesture_enable = 0;
+		write_value = 0;
+    }
+	ts->gesture_enabled = write_value;
+
+	return count;
+}
+static const struct file_operations tp_gesture_proc_fops = {
+	.write = tp_gesture_write_func,
+	.read =  tp_gesture_read_func,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+};
+
+int nvt_gesture_proc_init(void)
+{
+	int ret = 0;
+	struct proc_dir_entry *prEntry_tmp  = NULL;
+	prEntry_tp = proc_mkdir("touchpanel", NULL);
+	if( prEntry_tp == NULL ){
+		ret = -ENOMEM;
+		NVT_LOG("Couldn't create touchpanel\n");
+	}
+
+	prEntry_tmp = proc_create( "gesture_enable", 0666, prEntry_tp, &tp_gesture_proc_fops);
+	if(prEntry_tmp == NULL){
+		ret = -ENOMEM;
+        NVT_LOG("Couldn't create gesture_enable\n");
+	}
+    return ret;
 }
 
 /*******************************************************
@@ -1592,9 +1640,10 @@ static int32_t nvt_ts_probe(struct i2c_client *client, const struct i2c_device_i
 		return -ENOMEM;
 	}
 
-	ts->client = client;
-	ts->input_proc = NULL; 
+	ts->client = client; 
 	i2c_set_clientdata(client, ts);
+	ts_g = ts;
+	ts->is_suspended = 0;
 
 	//---parse dts---
 	nvt_parse_dt(&client->dev);
@@ -1689,6 +1738,8 @@ static int32_t nvt_ts_probe(struct i2c_client *client, const struct i2c_device_i
 		input_set_capability(ts->input_dev, EV_KEY, touch_key_array[retry]);
 	}
 #endif
+
+	nvt_gesture_proc_init();
 
 #if WAKEUP_GESTURE
 	for (retry = 0; retry < ARRAY_SIZE(gesture_key_array); retry++) {
@@ -1804,11 +1855,7 @@ static int32_t nvt_ts_probe(struct i2c_client *client, const struct i2c_device_i
 	if (ret) {
 		NVT_ERR("Cannot create sysfs structure!\n");
 	} 
-	ret = novatek_input_symlink(ts);
-	if (ret < 0) {
-		NVT_ERR("Failed to symlink input device!\n");
-	}
- 
+
 	bTouchIsAwake = 1;
 	NVT_LOG("end\n");
 

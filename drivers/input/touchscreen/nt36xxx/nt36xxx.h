@@ -151,6 +151,8 @@ struct nvt_ts_data {
 	uint8_t xbuf[1025];
 	struct mutex xbuf_lock;
 	bool irq_enabled;
+	int gesture_enable;
+	int is_suspended;
 
 	size_t config_array_size;
 #if WAKEUP_GESTURE
