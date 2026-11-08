@@ -187,6 +187,7 @@ static inline const char* ht_ioctl_str(unsigned int cmd)
 	return "UNKNOWN";
 }
 
+/*
 static inline void ht_update_battery(void)
 {
 	static u64 prev = 0;
@@ -198,6 +199,7 @@ static inline void ht_update_battery(void)
 		prev = cur;
 	}
 }
+*/
 
 static int ht_sample_period_store(const char *buf, const struct kernel_param *kp)
 {
@@ -412,7 +414,7 @@ void ht_register_thermal_zone_device(struct thermal_zone_device *tzd)
 
 void ht_register_power_supply(struct power_supply *psy)
 {
-	if (!psy)
+/*	if (!psy)
 		return;
 
 	pr_info("ht power supply list %s\n", psy->desc->name);
@@ -420,6 +422,7 @@ void ht_register_power_supply(struct power_supply *psy)
 		rocket.psy = psy;
 		pr_info("ht power supply registed %s\n", psy->desc->name);
 	}
+*/
 }
 
 void ht_register_kgsl_pwrctrl(void *pwr)
@@ -654,18 +657,21 @@ static long ht_ctl_ioctl(struct file *file, unsigned int cmd, unsigned long __us
 	case HT_IOC_FPS_PARTIAL_SYS_INFO:
 	{
 		struct ht_partial_sys_info data;
-		union power_supply_propval prop = {0, };
+/*		union power_supply_propval prop = {0, };
 		int ret;
+*/
 
 		if (ht_disable_fps_stabilizer_bat || rocket.psy==NULL) {
 			data.volt = data.curr = 0;
-		} else {
+		}
+/*		else {
 			ht_update_battery();
 			ret = power_supply_get_property(rocket.psy, POWER_SUPPLY_PROP_VOLTAGE_NOW, &prop);
 			data.volt = ret >= 0? prop.intval: 0;
 			ret = power_supply_get_property(rocket.psy, POWER_SUPPLY_PROP_CURRENT_NOW, &prop);
 			data.curr = ret >= 0? prop.intval: 0;
 		}
+*/
 
 		// related to cpu cluster configuration
 		// clus 0
@@ -757,7 +763,7 @@ static void ht_collect_resources(void)
 	unsigned int d_mask = disable_mask;
 	struct thermal_zone_device* tzd;
 	struct cpufreq_policy *pol_0, *pol_1, *pol;
-	union power_supply_propval prop = {0, };
+/*	union power_supply_propval prop = {0, }; */
 
 	if (ht_is_all_disabled(d_mask))
 		return;
@@ -815,12 +821,13 @@ static void ht_collect_resources(void)
 	if (pol_1) cpufreq_cpu_put(pol_1);
 
 	/* battery part */
-	if(rocket.psy){
+/*	if(rocket.psy){
 		ret = power_supply_get_property(rocket.psy, POWER_SUPPLY_PROP_VOLTAGE_NOW, &prop);
 		smps[idx][HT_BAT_VOLT_NOW] = ret >= 0? prop.intval: 0;
 		ret = power_supply_get_property(rocket.psy, POWER_SUPPLY_PROP_CURRENT_NOW, &prop);
 		smps[idx][HT_BAT_CURR_NOW] = ret >= 0? prop.intval: 0;
 	}
+*/
 }
 
 static inline void ht_wake_up(void)
